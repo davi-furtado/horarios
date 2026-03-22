@@ -15,8 +15,8 @@ BASE_QUERY = '''
            GROUP_CONCAT(p.nome SEPARATOR ', ') as professores
     FROM aulas a
     JOIN turmas t ON a.turma_id = t.id
-    LEFT JOIN aula_professor ap ON a.id = ap.aula_id
-    LEFT JOIN professores p ON ap.professor_id = p.id
+    JOIN aula_professor ap ON a.id = ap.aula_id
+    JOIN professores p ON ap.professor_id = p.id
 '''
 TRACOS = '-' * 45
 
