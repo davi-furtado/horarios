@@ -31,7 +31,8 @@ horarios/
 ├── horarios.sql
 ├── LICENSE
 ├── main.py
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
 ### Tecnologias utilizadas:
@@ -58,6 +59,10 @@ Script DDL para criação da estrutura relacional. Contém as modelagens iniciai
 #### `main.py`
 
 O corpo principal da aplicação. Executado no terminal de comandos, fornece uma interface interativa via menu numérico (`while True`). As requisições são processadas em tempo real com acesso direto ao banco MySQL local. As consultas (`queries`) priorizam o uso da diretiva `GROUP_CONCAT` para agrupar as exibições em tela.
+
+#### `requirements.txt`
+
+Arquivo com as bibliotecas Python usadas no projeto. Para instalar todas de uma vez abra o terminal e use o comando `pip install -r requirements.txt`.
 
 ## Licença
 
