@@ -6,7 +6,7 @@
 </div>
 
 <p align="right">
-Sistema interativo de terminal (CLI) em Python para consulta de horários escolares e turnos de permanência, alimentado por um banco de dados MySQL.
+Sistema interativo de terminal em Python para consulta de horários escolares e turnos de permanência, alimentado por um banco de dados MySQL.
 </p>
 
 ## Funcionalidades
