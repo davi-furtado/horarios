@@ -22,7 +22,6 @@ db_config = {
 }
 
 
-# ================= DB =================
 def get_db_connection():
     try:
         return connect(**db_config)
@@ -42,7 +41,6 @@ def parse_turma(turma_str: str):
         raise HTTPException(400, 'Formato inválido de turma')
 
 
-# ================= BASE QUERY =================
 BASE_QUERY = '''
     SELECT
         a.id,
