@@ -35,8 +35,17 @@ def formatar_hora(h):
 
 def parse_turma(turma_str: str):
     try:
-        serie, curso, letra, subturma = turma_str.split('_')
-        return int(serie), curso, letra, subturma
+        params = turma_str.split('_')
+        if len(params) == 4:
+            return int(params[0]), params[1], params[2], params[3]
+        elif len(params) == 3:
+            return int(params[0]), params[1], params[2]
+        elif len(params) == 3:
+            return int(params[0]), params[1]
+        elif len(params) == 3:
+            return params[1]
+        else:
+            raise Exception
     except:
         raise HTTPException(400, 'Formato inválido de turma')
 
@@ -50,12 +59,13 @@ BASE_QUERY = '''
         m.nome as materia,
         GROUP_CONCAT(p.nome SEPARATOR ', ') as professores,
         t.serie,
-        t.curso,
+        c.nome as curso,
         t.letra,
         a.subturma
     FROM aulas a
     JOIN turmas t ON a.turma_id = t.id
     JOIN materias m ON a.materia_id = m.id
+    JOIN cursos c ON t.curso_id = c.id
     LEFT JOIN aula_professor ap ON a.id = ap.aula_id
     LEFT JOIN professores p ON ap.professor_id = p.id
 '''
@@ -81,7 +91,6 @@ def todas_aulas():
             a['hora_fim'] = formatar_hora(a['hora_fim'])
 
         return aulas
-
     finally:
         cursor.close()
         conn.close()
@@ -90,11 +99,11 @@ def todas_aulas():
 @app.get('/professores')
 def listar_professores():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
         cursor.execute('SELECT nome FROM professores ORDER BY nome')
-        return [nome[0] for nome in cursor.fetchall()]
+        return cursor.fetchall()
     finally:
         cursor.close()
         conn.close()
@@ -106,7 +115,7 @@ def listar_turmas():
     cursor = conn.cursor(dictionary=True)
 
     try:
-        cursor.execute('SELECT serie, curso, letra FROM turmas')
+        cursor.execute('SELECT t.serie, c.nome as curso, t.letra FROM turmas t JOIN cursos c ON t.curso_id = c.id ORDER BY t.id, c.nome')
         turmas = cursor.fetchall()
 
         for t in turmas:
@@ -121,11 +130,11 @@ def listar_turmas():
 @app.get('/cursos')
 def listar_cursos():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
-        cursor.execute('SELECT DISTINCT(curso) FROM turmas')
-        return [curso[0] for curso in cursor.fetchall()]
+        cursor.execute('SELECT curso FROM cursos')
+        return cursor.fetchall()
     finally:
         cursor.close()
         conn.close()
@@ -134,19 +143,22 @@ def listar_cursos():
 @app.get('/aulas/turma')
 def aulas_por_turma(
     turma: str = Query(...),
-    dia: Optional[int] = Query(None, ge=1, le=5),
-    subturma: Optional[str] = None
+    dia: Optional[int] = Query(None, ge=1, le=5)
 ):
-    serie, curso, letra, sub = parse_turma(turma)
+    f_turma = parse_turma(turma)
+    if len(f_turma) == 4:
+        serie, curso, letra, subturma = f_turma
+    else:
+        serie, curso,
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     try:
         query = BASE_QUERY + '''
-            WHERE t.serie=%s AND t.curso=%s AND t.letra=%s
+            WHERE t.serie=%s AND t.curso=%s AND t.letra=%s AND (a.subturma=%s OR a.subturma IS NULL)
         '''
-        params = [serie, curso, letra]
+        params = [serie, curso, letra, subturma]
 
         if dia is not None:
             query += ' AND a.dia_semana=%s'
