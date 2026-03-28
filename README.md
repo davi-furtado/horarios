@@ -6,7 +6,7 @@
 </div>
 
 <p align="right">
-Sistema interativo de terminal em Python para consulta de horários escolares e turnos de permanência, alimentado por um banco de dados MySQL.
+API em Python (FastAPI) para consulta de horários escolares e turnos de permanência, alimentada por um banco de dados MySQL.
 </p>
 
 ## Funcionalidades
@@ -34,12 +34,14 @@ horarios/
 ├── LICENSE
 ├── main.py
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+├── select_all.sql
+└── test.py
 ```
 
 ### Tecnologias utilizadas:
 
-- Python
+- Python (FastAPI, Uvicorn)
 - MySQL
 - mysql-connector-python
 - CSV
@@ -60,11 +62,36 @@ Script DDL para criação da estrutura relacional. Contém as modelagens iniciai
 
 #### `main.py`
 
-O corpo principal da aplicação. Executado no terminal de comandos, fornece uma interface interativa via menu numérico (`while True`). As requisições são processadas em tempo real com acesso direto ao banco MySQL local. As consultas (`queries`) priorizam o uso da diretiva `GROUP_CONCAT` para agrupar as exibições em tela.
+O corpo principal da aplicação. Trata-se de uma API construída com FastAPI que fornece diversos endpoints (`/professores`, `/turmas`, `/aulas`, etc.) para consulta. As requisições são processadas em tempo real com acesso direto ao banco MySQL local, retornando respostas no formato JSON.
 
 #### `requirements.txt`
 
 Arquivo com as bibliotecas Python usadas no projeto. Para instalar todas de uma vez abra o terminal e use o comando `pip install -r requirements.txt`.
+
+#### `select_all.sql`
+
+Script utilitário em SQL contendo queries básicas (`SELECT *`) para verificar o conteúdo e a integridade de todas as tabelas após a carga inicial de dados.
+
+#### `test.py`
+
+Script utilitário simples em Python para testar a comunicação com a API, realizando uma requisição GET na rota raiz (`/`).
+
+### Como Executar
+
+1. **Banco de Dados**: Execute o script `horarios.sql` no seu servidor MySQL local ou na sua instância de preferência para criar a estrutura do banco e as tabelas `horarios`.
+2. **Dependências**: Instale os pacotes necessários via pip:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Carga Inicial**: Execute o script de preenchimento para importar os arquivos do diretório `dados/*.csv` para o banco:
+   ```bash
+   python data_entry.py
+   ```
+4. **Executando a API**: Inicie o servidor da API:
+   ```bash
+   python main.py
+   ```
+5. **Testes**: A API estará disponível em `http://localhost:8000`. Acesse a documentação interativa gerada automaticamente pelo FastAPI em `http://localhost:8000/docs` para inspecionar os endpoints e executar testes.
 
 ## Licença
 

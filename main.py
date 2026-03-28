@@ -78,6 +78,22 @@ LEFT JOIN professores p ON ap.professor_id = p.id
 '''
 
 
+@app.get('/')
+def root():
+    return {
+        'status': 'ok',
+        'api': 'Horários',
+        'endpoints': [
+            '/professores',
+            '/materias',
+            '/cursos',
+            '/turmas',
+            '/aulas',
+            '/entrada-saida'
+        ]
+    }
+
+
 @app.get('/professores')
 def professores(nome: Optional[str] = None):
     conn = get_db()
@@ -131,7 +147,7 @@ def cursos(nome: Optional[str] = None):
             )
         else:
             cursor.execute('SELECT nome FROM cursos ORDER BY nome')
-        
+
         return cursor.fetchall()
     finally:
         cursor.close()
@@ -140,6 +156,49 @@ def cursos(nome: Optional[str] = None):
 
 @app.get('/turmas')
 def turmas(turma: Optional[str] = None):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        where = []
+        params = []
+
+        if turma:
+            serie, curso, letra, _ = parse_turma(turma)
+
+            where.append('c.nome LIKE %s')
+            params.append(f'%{curso}%')
+
+            if serie:
+                where.append('t.serie=%s')
+                params.append(serie)
+
+            if letra:
+                where.append('t.letra=%s')
+                params.append(letra)
+
+        where_sql = f'WHERE {" AND ".join(where)}' if where else ''
+
+        cursor.execute(f'''
+        SELECT
+            t.serie,
+            c.nome curso,
+            t.letra
+        FROM turmas t
+        JOIN cursos c ON t.curso_id = c.id
+        {where_sql}
+        ORDER BY c.nome, t.serie, t.letra
+        ''', tuple(params))
+
+        result = cursor.fetchall()
+
+        for i, t in enumerate(result):
+            result[i]['nome'] = '_'.join([str(v) for v in t.values() if v])
+
+        return result
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get('/aulas')
@@ -151,56 +210,52 @@ def aulas(
     hora_inicio: Optional[str] = None,
     hora_fim: Optional[str] = None
 ):
-    if not turma and not professor:
-        where = ''
-        params = []
-    else:
-        where = 'WHERE '
-        params = []
-        conds = []
+    where = []
+    params = []
 
-        if turma:
-            serie, curso, letra, subturma = parse_turma(turma)
+    if turma:
+        serie, curso, letra, subturma = parse_turma(turma)
 
-            conds.append('c.nome LIKE %s')
-            params.append(f'%{curso}%')
+        where.append('c.nome LIKE %s')
+        params.append(f'%{curso}%')
 
-            if serie:
-                conds.append('t.serie=%s')
-                params.append(serie)
+        if serie:
+            where.append('t.serie=%s')
+            params.append(serie)
 
-            if letra:
-                conds.append('t.letra=%s')
-                params.append(letra)
+        if letra:
+            where.append('t.letra=%s')
+            params.append(letra)
 
-            if subturma:
-                conds.append('(a.subturma IS NULL OR a.subturma=%s)')
-                params.append(subturma)
+        if subturma:
+            where.append('(a.subturma IS NULL OR a.subturma=%s)')
+            params.append(subturma)
 
-        if professor:
-            conds.append('p.nome LIKE %s')
-            params.append(f'%{professor}%')
-
-        where += ' AND '.join(conds)
+    if professor:
+        where.append('p.nome LIKE %s')
+        params.append(f'%{professor}%')
 
     if dia:
-        where += ' AND a.dia_semana=%s' if where else 'WHERE a.dia_semana=%s'
+        where.append('a.dia_semana=%s')
         params.append(dia)
 
     if materia:
-        where += ' AND m.nome=%s' if where else 'WHERE m.nome=%s'
+        where.append('m.nome=%s')
         params.append(materia)
 
     if hora_inicio:
-        where += ' AND a.hora_inicio=%s' if where else 'WHERE a.hora_inicio=%s'
+        where.append('a.hora_inicio=%s')
         params.append(hora_inicio)
 
     if hora_fim:
-        where += ' AND a.hora_fim=%s' if where else 'WHERE a.hora_fim=%s'
+        where.append('a.hora_fim=%s')
         params.append(hora_fim)
 
-    query = BASE + f'''
-    {where}
+    where_sql = f'WHERE {" AND ".join(where)}' if where else ''
+
+    query = f'''
+    {BASE}
+    {where_sql}
     GROUP BY a.id
     ORDER BY a.dia_semana, a.hora_inicio
     '''
@@ -288,48 +343,6 @@ def entrada_saida(
 
         return response
     finally:
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    try:
-        where = []
-        params = []
-
-        if turma:
-            serie, curso, letra, subturma = parse_turma(turma)
-
-            where.append('c.nome LIKE %s')
-            params.append(f'%{curso}%')
-
-            if serie:
-                where.append('t.serie=%s')
-                params.append(serie)
-
-            if letra:
-                where.append('t.letra=%s')
-                params.append(letra)
-
-        where = f'WHERE {" AND ".join(where)}' if where else ''
-
-        cursor.execute(f'''
-        SELECT
-            t.serie,
-            c.nome curso,
-            t.letra
-        FROM turmas t
-        JOIN cursos c ON t.curso_id = c.id
-        {where}
-        ORDER BY c.nome, t.serie, t.letra
-        ''', tuple(params))
-
-        turmas = cursor.fetchall()
-        for i, t in enumerate(turmas):
-            turmas[i]['nome'] = '_'.join([str(v) for v in t.values() if v])
-
-        return turmas
-    finally:
-        cursor.close()
-        conn.close()
         cursor.close()
         conn.close()
 
