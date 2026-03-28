@@ -85,6 +85,7 @@ def aulas(
     dia: Optional[int] = Query(None, ge=1, le=5),
     materia: Optional[str] = None,
     hora_inicio: Optional[str] = None,
+    hora_fim: Optional[str] = None
 ):
     if not turma and not professor:
         where = ''
@@ -92,7 +93,6 @@ def aulas(
     else:
         where = 'WHERE '
         params = []
-
         conds = []
 
         if turma:
@@ -131,6 +131,10 @@ def aulas(
         where += ' AND a.hora_inicio=%s' if where else 'WHERE a.hora_inicio=%s'
         params.append(hora_inicio)
 
+    if hora_fim:
+        where += ' AND a.hora_inicio=%s' if where else 'WHERE a.hora_fim=%s'
+        params.append(hora_fim)
+
     query = BASE + f'''
     {where}
     GROUP BY a.id
@@ -142,7 +146,7 @@ def aulas(
 
     try:
         cursor.execute(query, tuple(params))
-        response = curso.fetchall()
+        response = cursor.fetchall()
 
         for r in response:
             r['hora_inicio'] = fmt(r['hora_inicio'])
@@ -158,6 +162,7 @@ def aulas(
 def entrada_saida(
     turma: Optional[str] = None,
     professor: Optional[str] = None,
+    dia: Optional[int] = Query(None, ge=1, le=5)
 ):
     if not turma and not professor:
         raise HTTPException(400, 'Informe turma ou professor')
@@ -178,7 +183,7 @@ def entrada_saida(
         if letra:
             where.append('t.letra=%s')
             params.append(letra)
-        
+
         if subturma:
             where.append('(a.subturma IS NULL OR a.subturma=%s)')
             params.append(subturma)
@@ -186,6 +191,10 @@ def entrada_saida(
     if professor:
         where.append('p.nome LIKE %s')
         params.append(f'%{professor}%')
+
+    if dia:
+        where.append('a.dia_semana=%s')
+        params.append(dia)
 
     query = f'''
     SELECT
@@ -197,7 +206,7 @@ def entrada_saida(
     JOIN cursos c ON t.curso_id = c.id
     LEFT JOIN aula_professor ap ON a.id = ap.aula_id
     LEFT JOIN professores p ON ap.professor_id = p.id
-    WHERE {" AND ".join(where)}
+    WHERE {' AND '.join(where)}
     GROUP BY a.dia_semana
     ORDER BY a.dia_semana
     '''
@@ -214,68 +223,6 @@ def entrada_saida(
             r['saida'] = fmt(r['saida'])
 
         return response
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@app.get('/conflitos')
-def conflitos(
-    professores: Optional[list[str]] = Query(None),
-    turmas: Optional[list[str]] = Query(None),
-):
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-
-    try:
-        filtros = []
-        params = []
-
-        if professores:
-            filtros.append('p.nome IN (%s)' % ','.join(['%s'] * len(professores)))
-            params.extend(professores)
-
-        if turmas:
-            conds = []
-            for t in turmas:
-                serie, curso, letra, subturma = parse_turma(t)
-
-                c = ['c.nome LIKE %s']
-                params.append(f'%{curso}%')
-
-                if serie:
-                    c.append('t.serie=%s')
-                    params.append(serie)
-
-                if letra:
-                    c.append('t.letra=%s')
-                    params.append(letra)
-
-                if subturma:
-                    c.append('(a.subturma IS NULL OR a.subturma=%s)')
-                    params.append(subturma)
-
-                conds.append('(' + ' AND '.join(c) + ')')
-
-            filtros.append('(' + ' OR '.join(conds) + ')')
-
-        where = ('WHERE ' + ' OR '.join(filtros)) if filtros else ''
-
-        query = BASE + f'''
-        {where}
-        GROUP BY a.id
-        ORDER BY a.dia_semana, a.hora_inicio
-        '''
-
-        cursor.execute(query, tuple(params))
-        response = cursor.fetchall()
-
-        for r in response:
-            r['hora_inicio'] = fmt(r['hora_inicio'])
-            r['hora_fim'] = fmt(r['hora_fim'])
-
-        return response
-
     finally:
         cursor.close()
         conn.close()
