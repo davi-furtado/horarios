@@ -38,7 +38,7 @@ CREATE TABLE turmas (
     curso_id INT NOT NULL,
     letra ENUM('A', 'B', 'C'),
 
-    sala_id INT, -- sala padrão da turma
+    sala_id INT,
 
     CHECK (serie IS NULL OR serie BETWEEN 1 AND 10),
 
