@@ -1,5 +1,5 @@
-nome,tipo
-Sala 101,sala
-Sala 102,sala
-Lab 1,lab
-Lab 2,lab
+escola_id,nome,tipo
+1,Sala 101,sala
+1,Sala 102,sala
+1,Lab 1,lab
+1,Lab 2,lab

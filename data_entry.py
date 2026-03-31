@@ -3,7 +3,7 @@ from csv import DictReader, DictWriter
 
 DATA_DIR = 'dados/'
 
-def ler_escrever(path, lambda_key):
+def ler_ordenar(path, lambda_key):
     arquivo = f'{DATA_DIR}{path}.csv'
 
     with open(arquivo, 'r', encoding='utf-8') as f:
@@ -39,22 +39,24 @@ def inserir(tabela, dados):
 def truncate(table):
     cursor.execute(f'TRUNCATE TABLE {table}')
 
-
-professores = ler_escrever('professores', lambda x: x['nome'])
-materias = ler_escrever('materias', lambda x: x['nome'])
-cursos = ler_escrever('cursos', lambda x: x['nome'])
-salas = ler_escrever('salas', lambda x: x['nome'])
-turmas = ler_escrever('turmas', lambda x: x['curso_id'])
-aulas = ler_escrever(
+escolas = ler_ordenar('escolas', lambda x: x['nome'])
+usuarios = ler_ordenar('usuarios', lambda x: (x['escola_id'], x['username']))
+professores = ler_ordenar('professores', lambda x: (x['escola_id'], x['nome']))
+materias = ler_ordenar('materias', lambda x: (x['escola_id'], x['nome']))
+cursos = ler_ordenar('cursos', lambda x: (x['escola_id'], x['nome']))
+salas = ler_ordenar('salas', lambda x: (x['escola_id'], x['nome']))
+turmas = ler_ordenar('turmas', lambda x: (x['escola_id'], x['curso_id']))
+aulas = ler_ordenar(
     'aulas',
     lambda x: (
+        x['escola_id'],
         x['turma_id'],
         x['dia_semana'],
         x['hora_inicio'],
         x['subturma'] or ''
     )
 )
-aula_professor = ler_escrever('aula_professor', lambda x: x['aula_id'])
+aula_professor = ler_escrever('aula_professor', lambda x: (x['escola_id'], x['aula_id']))
 
 connection = connect(
     host='localhost',
@@ -65,20 +67,8 @@ connection = connect(
 )
 cursor = connection.cursor(dictionary=True)
 
-cursor.execute('SET FOREIGN_KEY_CHECKS = 0')
-
-cursor.execute('TRUNCATE TABLE professores')
-cursor.execute('TRUNCATE TABLE materias')
-cursor.execute('TRUNCATE TABLE cursos')
-cursor.execute('TRUNCATE TABLE salas')
-cursor.execute('TRUNCATE TABLE turmas')
-cursor.execute('TRUNCATE TABLE aulas')
-cursor.execute('TRUNCATE TABLE aula_professor')
-
-cursor.execute('SET FOREIGN_KEY_CHECKS = 1')
-
-connection.commit()
-
+inserir('escolas', escolas)
+inserir('usuarios', usuarios)
 inserir('professores', professores)
 inserir('materias', materias)
 inserir('cursos', cursos)
