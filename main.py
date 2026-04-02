@@ -8,11 +8,10 @@ import jwt
 import bcrypt
 from datetime import datetime, timedelta
 
-
 SECRET = 'SECRET_KEY'
 ALGO = 'HS256'
 
-app = FastAPI()
+app = FastAPI(title='Horarios', version='1.0.0')
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,33 +32,41 @@ pool = pooling.MySQLConnectionPool(
 
 security = HTTPBearer()
 
-
 def get_db():
     try:
         return pool.get_connection()
     except Error:
         raise HTTPException(500, 'Erro no banco')
 
-
-def create_token(data: dict):
+def create_token(data):
     payload = data.copy()
     payload['exp'] = datetime.utcnow() + timedelta(hours=8)
     return jwt.encode(payload, SECRET, algorithm=ALGO)
 
-fmt = lambda h: str(h)[:-3] if h else None
-
-
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        payload = jwt.decode(credentials.credentials, SECRET, algorithms=[ALGO])
-        return payload
+        return jwt.decode(credentials.credentials, SECRET, algorithms=[ALGO])
     except:
-        raise HTTPException(401, 'Token inválido')
+        raise HTTPException(401, 'Token invalido')
+
+def admin_required(user=Depends(verify_token)):
+    if user.get('tipo') != 'admin':
+        raise HTTPException(403, 'Acesso negado')
+    return user
 
 
 class Login(BaseModel):
-    username: str
+    email: str
     password: str
+
+class AddUser(BaseModel):
+    email: str
+    password: str
+    tipo: str
+    professor_id: Optional[int] = None
+
+class Nome(BaseModel):
+    nome: str
 
 class AulaCreate(BaseModel):
     turma_id: int
@@ -71,223 +78,276 @@ class AulaCreate(BaseModel):
     subturma: Optional[str] = None
     sala_id: Optional[int] = None
 
-class Nome(BaseModel):
-    nome: str
-
-
-def conflito_horario(cur, escola_id, turma_id, professores, dia, hi, hf):
-    cur.execute('''
-        SELECT 1 FROM aulas
-        WHERE escola_id=%s AND turma_id=%s AND dia_semana=%s
-        AND (%s < hora_fim AND %s > hora_inicio)
-    ''', (escola_id, turma_id, dia, hi, hf))
-
-    if cur.fetchone():
-        return 'Conflito de turma'
-
-    for p in professores:
-        cur.execute('''
-            SELECT 1 FROM aulas a
-            JOIN aula_professor ap ON a.id=ap.aula_id
-            WHERE a.escola_id=%s AND ap.professor_id=%s AND a.dia_semana=%s
-            AND (%s < a.hora_fim AND %s > a.hora_inicio)
-        ''', (escola_id, p, dia, hi, hf))
-
-        if cur.fetchone():
-            return f'Conflito professor {p}'
-
-    return None
-
-
-def conflito_restricoes(cur, escola_id, turma_id, professores, dia, hi, hf):
-    cur.execute('''
-        SELECT 1 FROM restricoes_turma
-        WHERE escola_id=%s AND turma_id=%s AND dia_semana=%s
-        AND (%s < hora_fim AND %s > hora_inicio)
-    ''', (escola_id, turma_id, dia, hi, hf))
-
-    if cur.fetchone():
-        return 'Restrição de turma'
-
-    for p in professores:
-        cur.execute('''
-            SELECT 1 FROM restricoes_professor
-            WHERE escola_id=%s AND professor_id=%s AND dia_semana=%s
-            AND (%s < hora_fim AND %s > hora_inicio)
-        ''', (escola_id, p, dia, hi, hf))
-
-        if cur.fetchone():
-            return f'Restrição professor {p}'
-
-    return None
-
 
 @app.post('/login')
 def login(data: Login):
     conn = get_db()
-    cur = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True)
 
-    cur.execute('SELECT * FROM usuarios WHERE username=%s', (data.username,))
-    user = cur.fetchone()
+    cursor.execute('SELECT * FROM usuarios WHERE email=%s', (data.email,))
+    user = cursor.fetchone()
 
-    cur.close()
+    cursor.close()
     conn.close()
 
     if not user or not bcrypt.checkpw(data.password.encode(), user['password_hash'].encode()):
-        raise HTTPException(401, 'Credenciais inválidas')
+        raise HTTPException(401, 'Credenciais invalidas')
 
-    token = create_token({
-        'user_id': user['id'],
-        'escola_id': user['escola_id'],
-        'role': user['role']
-    })
-
+    token = create_token({'user_id': user['id'], 'tipo': user['tipo']})
     return {'token': token}
 
 
-@app.post('/professores')
-def criar_professor(data: Nome, user=Depends(verify_token)):
-    conn = get_db()
-    cur = conn.cursor()
+@app.post('/users')
+def add_user(data: AddUser, user=Depends(admin_required)):
+    if data.tipo not in ['admin', 'professor']:
+        raise HTTPException(400, 'Tipo invalido')
 
-    cur.execute(
-        'INSERT INTO professores (escola_id, nome) VALUES (%s,%s)',
-        (user['escola_id'], data.nome)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute('SELECT id FROM usuarios WHERE email=%s', (data.email,))
+    if cursor.fetchone():
+        raise HTTPException(400, 'Email ja existe')
+
+    password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+
+    cursor.execute(
+        'INSERT INTO usuarios (email, password_hash, tipo) VALUES (%s,%s,%s)',
+        (data.email, password_hash, data.tipo)
     )
 
+    user_id = cursor.lastrowid
+
+    if data.tipo == 'professor':
+        if not data.professor_id:
+            raise HTTPException(400, 'professor_id obrigatorio')
+
+        cursor.execute('SELECT id, usuario_id FROM professores WHERE id=%s', (data.professor_id,))
+        prof = cursor.fetchone()
+        if not prof or prof['usuario_id']:
+            raise HTTPException(400, 'Professor invalido')
+
+        cursor.execute(
+            'UPDATE professores SET usuario_id=%s WHERE id=%s',
+            (user_id, data.professor_id)
+        )
+
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
 
+    return {'id': user_id}
+
+
+@app.get('/professores')
+def listar_professores():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM professores')
+    res = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return res
+
+
+@app.post('/professores')
+def criar_professor(data: Nome, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO professores (nome) VALUES (%s)', (data.nome,))
+    conn.commit()
+    cursor.close()
+    conn.close()
     return {'ok': True}
+
+
+@app.put('/professores/{id}')
+def atualizar_professor(id: int, data: Nome, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE professores SET nome=%s WHERE id=%s', (data.nome, id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
+
+
+@app.delete('/professores/{id}')
+def deletar_professor(id: int, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM professores WHERE id=%s', (id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
+
+
+@app.get('/materias')
+def listar_materias():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM materias')
+    res = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return res
 
 
 @app.post('/materias')
-def criar_materia(data: Nome, user=Depends(verify_token)):
+def criar_materia(data: Nome, user=Depends(admin_required)):
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        'INSERT INTO materias (escola_id, nome) VALUES (%s,%s)',
-        (user['escola_id'], data.nome)
-    )
-
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO materias (nome) VALUES (%s)', (data.nome,))
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
-
     return {'ok': True}
+
+
+@app.put('/materias/{id}')
+def atualizar_materia(id: int, data: Nome, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE materias SET nome=%s WHERE id=%s', (data.nome, id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
+
+
+@app.delete('/materias/{id}')
+def deletar_materia(id: int, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM materias WHERE id=%s', (id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
+
+
+@app.get('/cursos')
+def listar_cursos():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM cursos')
+    res = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return res
 
 
 @app.post('/cursos')
-def criar_curso(data: Nome, user=Depends(verify_token)):
+def criar_curso(data: Nome, user=Depends(admin_required)):
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        'INSERT INTO cursos (escola_id, nome) VALUES (%s,%s)',
-        (user['escola_id'], data.nome)
-    )
-
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO cursos (nome) VALUES (%s)', (data.nome,))
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
-
     return {'ok': True}
 
 
-@app.post('/aulas')
-def criar_aula(data: AulaCreate, user=Depends(verify_token)):
+@app.put('/cursos/{id}')
+def atualizar_curso(id: int, data: Nome, user=Depends(admin_required)):
     conn = get_db()
-    cur = conn.cursor()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE cursos SET nome=%s WHERE id=%s', (data.nome, id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
 
-    escola_id = user['escola_id']
 
-    err = conflito_horario(cur, escola_id, data.turma_id, data.professores,
-                           data.dia_semana, data.hora_inicio, data.hora_fim)
-    if err:
-        raise HTTPException(400, err)
+@app.delete('/cursos/{id}')
+def deletar_curso(id: int, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM cursos WHERE id=%s', (id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {'ok': True}
 
-    err = conflito_restricoes(cur, escola_id, data.turma_id, data.professores,
-                              data.dia_semana, data.hora_inicio, data.hora_fim)
-    if err:
-        raise HTTPException(400, err)
 
-    cur.execute('''
-        INSERT INTO aulas (
-            escola_id, turma_id, materia_id,
-            dia_semana, hora_inicio, hora_fim,
-            subturma, sala_id
+def conflito_horario(cursor, turma_id, professores, dia, hi, hf):
+    cursor.execute(
+        'SELECT 1 FROM aulas WHERE turma_id=%s AND dia_semana=%s AND (%s < hora_fim AND %s > hora_inicio)',
+        (turma_id, dia, hi, hf)
+    )
+    if cursor.fetchone():
+        return 'Conflito turma'
+
+    for p in professores:
+        cursor.execute(
+            'SELECT 1 FROM aulas a JOIN aula_professor ap ON a.id=ap.aula_id WHERE ap.professor_id=%s AND a.dia_semana=%s AND (%s < a.hora_fim AND %s > a.hora_inicio)',
+            (p, dia, hi, hf)
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-    ''', (
-        escola_id, data.turma_id, data.materia_id,
-        data.dia_semana, data.hora_inicio, data.hora_fim,
-        data.subturma, data.sala_id
-    ))
+        if cursor.fetchone():
+            return 'Conflito professor'
 
-    aula_id = cur.lastrowid
+    return None
+
+
+@app.get('/aulas')
+def listar_aulas(dia: Optional[int] = None):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    if dia:
+        cursor.execute(
+            'SELECT * FROM aulas WHERE dia_semana=%s ORDER BY hora_inicio',
+            (dia,)
+        )
+    else:
+        cursor.execute(
+            'SELECT * FROM aulas ORDER BY dia_semana, hora_inicio'
+        )
+
+    res = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return res
+
+
+@app.post('/aulas')
+def criar_aula(data: AulaCreate, user=Depends(admin_required)):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    err = conflito_horario(cursor, data.turma_id, data.professores, data.dia_semana, data.hora_inicio, data.hora_fim)
+    if err:
+        raise HTTPException(400, err)
+
+    cursor.execute(
+        'INSERT INTO aulas (turma_id, materia_id, dia_semana, hora_inicio, hora_fim, subturma, sala_id) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+        (data.turma_id, data.materia_id, data.dia_semana, data.hora_inicio, data.hora_fim, data.subturma, data.sala_id)
+    )
+
+    aula_id = cursor.lastrowid
 
     for p in data.professores:
-        cur.execute(
+        cursor.execute(
             'INSERT INTO aula_professor (aula_id, professor_id) VALUES (%s,%s)',
             (aula_id, p)
         )
 
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
 
     return {'id': aula_id}
 
 
-@app.get('/aulas')
-def listar_aulas(
-    dia: Optional[int] = Query(None, ge=1, le=5),
-    user=Depends(verify_token)
-):
-    conn = get_db()
-    cur = conn.cursor(dictionary=True)
-
-    where = ['a.escola_id=%s']
-    params = [user['escola_id']]
-
-    if dia:
-        where.append('a.dia_semana=%s')
-        params.append(dia)
-
-    cur.execute(f'''
-        SELECT a.*, GROUP_CONCAT(p.nome) professores
-        FROM aulas a
-        LEFT JOIN aula_professor ap ON a.id=ap.aula_id
-        LEFT JOIN professores p ON ap.professor_id=p.id
-        WHERE {' AND '.join(where)}
-        GROUP BY a.id
-        ORDER BY a.dia_semana, a.hora_inicio
-    ''', tuple(params))
-
-    result = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return result
-
-
 @app.delete('/aulas/{id}')
-def deletar_aula(id: int, user=Depends(verify_token)):
+def deletar_aula(id: int, user=Depends(admin_required)):
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        'DELETE FROM aulas WHERE id=%s AND escola_id=%s',
-        (id, user['escola_id'])
-    )
-
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM aulas WHERE id=%s', (id,))
     conn.commit()
-    cur.close()
+    cursor.close()
     conn.close()
-
     return {'ok': True}
 
 
@@ -297,5 +357,5 @@ def root():
 
 
 if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run('main:app', host='0.0.0.0', reload=True)
+    from uvicorn import run
+    run(app, host='0.0.0.0')

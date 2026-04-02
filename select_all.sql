@@ -1,9 +1,11 @@
 USE horarios;
-SELECT * FROM escolas;
 SELECT * FROM usuarios;
 SELECT * FROM professores;
 SELECT * FROM materias;
+SELECT * FROM professor_materia;
 SELECT * FROM cursos;
 SELECT * FROM turmas;
 SELECT * FROM aulas;
 SELECT * FROM aula_professor;
+SELECT * FROM restricoes_curso;
+SELECT * FROM restricoes_professor;

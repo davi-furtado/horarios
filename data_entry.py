@@ -1,3 +1,4 @@
+import bcrypt
 from mysql.connector import connect
 from csv import DictReader, DictWriter
 
@@ -36,27 +37,49 @@ def inserir(tabela, dados):
     cursor.executemany(sql, valores)
 
 
-def truncate(table):
-    cursor.execute(f'TRUNCATE TABLE {table}')
-
-escolas = ler_ordenar('escolas', lambda x: x['nome'])
-usuarios = ler_ordenar('usuarios', lambda x: (x['escola_id'], x['username']))
-professores = ler_ordenar('professores', lambda x: (x['escola_id'], x['nome']))
-materias = ler_ordenar('materias', lambda x: (x['escola_id'], x['nome']))
-cursos = ler_ordenar('cursos', lambda x: (x['escola_id'], x['nome']))
-salas = ler_ordenar('salas', lambda x: (x['escola_id'], x['nome']))
-turmas = ler_ordenar('turmas', lambda x: (x['escola_id'], x['curso_id']))
+usuarios = ler_ordenar('usuarios', lambda x: (x['tipo'], x['email']))
+for x in usuarios:
+    x['password_hash'] = bcrypt.hashpw(x['password_hash'].encode(), bcrypt.gensalt()).decode()
+professores = ler_ordenar('professores', lambda x: x['nome'])
+materias = ler_ordenar('materias', lambda x: x['nome'])
+professor_materia = ler_ordenar('professor_materia', lambda x: (x['professor_id'], x['materia_id']))
+cursos = ler_ordenar('cursos', lambda x: x['nome'])
+salas = ler_ordenar('salas', lambda x: x['nome'])
+turmas = ler_ordenar(
+    'turmas',
+    lambda x: (
+        x['serie'],
+        x['curso_id'],
+        x['letra'] or ''
+    )
+)
 aulas = ler_ordenar(
     'aulas',
     lambda x: (
-        x['escola_id'],
         x['turma_id'],
         x['dia_semana'],
         x['hora_inicio'],
         x['subturma'] or ''
     )
 )
-aula_professor = ler_escrever('aula_professor', lambda x: (x['escola_id'], x['aula_id']))
+aula_professor = ler_ordenar('aula_professor', lambda x: x['aula_id'])
+restricoes_curso = ler_ordenar(
+    'restricoes_curso',
+    lambda x: (
+        x['curso_id'],
+        x['dia_semana'],
+        x['hora_inicio']
+    )
+)
+restricoes_professor = ler_ordenar(
+    'restricoes_professor',
+    lambda x: (
+        x['professor_id'],
+        x['dia_semana'],
+        x['hora_inicio']
+    )
+)
+
 
 connection = connect(
     host='localhost',
@@ -67,15 +90,19 @@ connection = connect(
 )
 cursor = connection.cursor(dictionary=True)
 
-inserir('escolas', escolas)
+
 inserir('usuarios', usuarios)
 inserir('professores', professores)
 inserir('materias', materias)
+inserir('professor_materia', professor_materia)
 inserir('cursos', cursos)
 inserir('salas', salas)
 inserir('turmas', turmas)
 inserir('aulas', aulas)
 inserir('aula_professor', aula_professor)
+inserir('restricoes_curso', restricoes_curso)
+inserir('restricoes_professor', restricoes_professor)
+
 
 connection.commit()
 

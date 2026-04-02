@@ -1,2 +1,6 @@
-escola_id,username,password,role
-1,admin,admin,admin
+email,password_hash,tipo
+admin@email.com,admin,admin
+ana@email.com,ana,professor
+andre@email.com,andre,professor
+camila@email.com,camila,professor
+carlos@email.com,carlos,professor
