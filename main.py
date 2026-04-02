@@ -8,7 +8,7 @@ import jwt
 import bcrypt
 from datetime import datetime, timedelta
 
-SECRET = 'Davisao-Miseravel-Pecador'
+SECRET = 'SECRET_KEY'
 ALGO = 'HS256'
 
 app = FastAPI(title='Horarios', version='1.0.0')

@@ -19,27 +19,29 @@ API em Python (FastAPI) para consulta de horários escolares e turnos de perman�
 
 ## Estrutura do Projeto
 
-O projeto adota uma divisão lógica separando o sistema central da API (`backend/`) da interface gráfica (futura implementação).
-
 ```text
 horarios/
 │
 ├── .gitignore
-├── backend/
-│   ├── dados/
-│   │   ├── aula_professor.csv
-│   │   ├── aulas.csv
-│   │   ├── materias.csv
-│   │   ├── professores.csv
-│   │   └── turmas.csv
-│   │
-│   ├── data_entry.py
-│   ├── horarios.sql
-│   ├── main.py
-│   ├── requirements.txt
-│   └── select_all.sql
+├── dados/
+│   ├── aula_professor.csv
+│   ├── aulas.csv
+│   ├── cursos.csv
+│   ├── materias.csv
+│   ├── professor_materia.csv
+│   ├── professores.csv
+│   ├── restricoes_curso.csv
+│   ├── restricoes_professor.csv
+│   ├── salas.csv
+│   ├── turmas.csv
+│   └── usuarios.csv
 │
-└── README.md
+├── data_entry.py
+├── horarios.sql
+├── main.py
+├── README.md
+├── requirements.txt
+└── select_all.sql
 ```
 
 ### Tecnologias utilizadas:
