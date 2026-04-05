@@ -1,6 +1,6 @@
 fastapi
-mysql_connector_repackaged
 pydantic
 PyJWT
 python_bcrypt
+SQLAlchemy
 uvicorn
