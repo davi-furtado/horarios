@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -7,14 +7,19 @@ from typing import List, Optional
 import jwt
 import bcrypt
 from datetime import datetime, timedelta
+from os import getenv
+from dotenv import load_dotenv
 
 from database import get_db, create_tables
 from models import Usuario, Professor, Materia, Curso, Sala, Turma, Aula
 
 create_tables()
 
-SECRET = 'SECRET_KEY'
-ALGO = 'HS256'
+load_dotenv('.env')
+SECRET = getenv('SECRET')
+ALGO = getenv('ALGO', 'HS256')
+HOST = getenv('HOST', '0.0.0.0')
+PORT = int(getenv('PORT', '8000'))
 
 app = FastAPI(
     title='Horarios',
@@ -52,15 +57,32 @@ class UpdateUser(BaseModel):
 class Nome(BaseModel):
     nome: str
 
+class NomeFilter(BaseModel):
+    nome: Optional[str] = None
+
+class UserFilter(BaseModel):
+    email: Optional[str] = None
+    tipo: Optional[str] = None
+
+class SalaFilter(BaseModel):
+    nome: Optional[str] = None
+    tipo: Optional[str] = None
+
+class TurmaFilter(BaseModel):
+    serie: Optional[int] = None
+    curso_id: Optional[int] = None
+    letra: Optional[str] = None
+    sala_id: Optional[int] = None
+
+class Sala(BaseModel):
+    nome: str
+    tipo: str
+
 class TurmaCreate(BaseModel):
     serie: Optional[int] = None
     curso_id: int
     letra: Optional[str] = None
     sala_id: int
-
-class Sala(BaseModel):
-    nome: str
-    tipo: str
 
 class AulaCreate(BaseModel):
     turma_id: int
@@ -111,8 +133,13 @@ def login(data: Login, db: Session=Depends(get_db)):
     return {'token': token}
 
 @app.get('/users')
-def listar_users(db: Session=Depends(get_db), user=Depends(admin_required)):
-    users = db.query(Usuario).all()
+def listar_users(filter: UserFilter = Depends(), db: Session=Depends(get_db), user=Depends(admin_required)):
+    query = db.query(Usuario)
+    if filter.email:
+        query = query.filter(Usuario.email.ilike(f'%{filter.email}%'))
+    if filter.tipo:
+        query = query.filter(Usuario.tipo == filter.tipo)
+    users = query.all()
     return [
         {
             'id': u.id,
@@ -202,8 +229,12 @@ def delete_user(id: int, db: Session=Depends(get_db), user=Depends(admin_require
 
 
 @app.get('/professores')
-def listar_professores(db: Session=Depends(get_db)):
-    professores = db.query(Professor).all()
+def listar_professores(data: NomeFilter = Depends(), db: Session=Depends(get_db)):
+    if data.nome:
+        professores = db.query(Professor).filter(Professor.nome.ilike(f'%{data.nome}%')).all()
+    else:
+        professores = db.query(Professor).all()
+
     return [
         {
             'id': p.id,
@@ -241,8 +272,11 @@ def deletar_professor(id: int, db: Session=Depends(get_db), user=Depends(admin_r
 
 
 @app.get('/materias')
-def listar_materias(db: Session=Depends(get_db)):
-    materias = db.query(Materia).all()
+def listar_materias(filter: NomeFilter = Depends(), db: Session=Depends(get_db)):
+    query = db.query(Materia)
+    if filter.nome:
+        query = query.filter(Materia.nome.ilike(f'%{filter.nome}%'))
+    materias = query.all()
     return [{'id': m.id, 'nome': m.nome} for m in materias]
 
 @app.post('/materias')
@@ -274,8 +308,11 @@ def deletar_materia(id: int, db: Session=Depends(get_db), user=Depends(admin_req
 
 
 @app.get('/cursos')
-def listar_cursos(db: Session=Depends(get_db)):
-    cursos = db.query(Curso).all()
+def listar_cursos(filter: NomeFilter = Depends(), db: Session=Depends(get_db)):
+    query = db.query(Curso)
+    if filter.nome:
+        query = query.filter(Curso.nome.ilike(f'%{filter.nome}%'))
+    cursos = query.all()
     return [{'id': c.id, 'nome': c.nome} for c in cursos]
 
 @app.post('/cursos')
@@ -307,8 +344,13 @@ def deletar_curso(id: int, db: Session=Depends(get_db), user=Depends(admin_requi
 
 
 @app.get('/salas')
-def listar_salas(db: Session=Depends(get_db)):
-    salas = db.query(Sala).all()
+def listar_salas(filter: SalaFilter = Depends(), db: Session=Depends(get_db)):
+    query = db.query(Sala)
+    if filter.nome:
+        query = query.filter(Sala.nome.ilike(f'%{filter.nome}%'))
+    if filter.tipo:
+        query = query.filter(Sala.tipo == filter.tipo)
+    salas = query.all()
     return [{'id': s.id, 'nome': s.nome, 'tipo': s.tipo} for s in salas]
 
 @app.post('/salas')
@@ -341,8 +383,15 @@ def deletar_sala(id: int, db: Session=Depends(get_db), user=Depends(admin_requir
 
 
 @app.get('/turmas')
-def listar_turmas(db: Session=Depends(get_db)):
-    turmas = db.query(Turma).all()
+def listar_turmas(filter: TurmaFilter = Depends(), db: Session=Depends(get_db)):
+    query = db.query(Turma)
+    if filter.serie is not None:
+        query = query.filter(Turma.serie == filter.serie)
+    if filter.curso_id is not None:
+        query = query.filter(Turma.curso_id == filter.curso_id)
+    if filter.letra:
+        query = query.filter(Turma.letra.ilike(f'%{filter.letra}%'))
+    turmas = query.all()
     return [
         {
             'id': t.id,
@@ -556,4 +605,4 @@ def deletar_aula(id: int, db: Session=Depends(get_db), user=Depends(admin_requir
 
 if __name__ == '__main__':
     from uvicorn import run
-    run(app, host='0.0.0.0')
+    run(app, host=HOST, port=PORT)
