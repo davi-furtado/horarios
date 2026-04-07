@@ -2,12 +2,15 @@ import bcrypt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from csv import DictReader, DictWriter
+from os import getenv
+from dotenv import load_dotenv
 
 from models import *
 
+load_dotenv('.env')
 DATA_DIR = 'dados/'
 
-DATABASE_URL = 'mysql+pymysql://root:@localhost/horarios'
+DATABASE_URL = getenv('DATABASE_URL')
 engine = create_engine(DATABASE_URL, echo=False)
 
 Base.metadata.create_all(bind=engine)
